@@ -178,6 +178,7 @@ Suggested approach, relevant engine systems, estimated complexity.
 | Skill | Hand off when |
 |-------|--------------|
 | concept-art | You need visual exploration of a character, environment, prop, or mood |
+| eval-driven-game-development | A design needs balance validation — eval scenarios, simulation, playtest metrics, or a regression gate before or after implementation |
 | ue5-gamedev | Design is ready for C++/Blueprint implementation in Unreal Engine |
 | ue5-level-design | Design calls for specific level/environment construction |
 | ue5-character | Design specifies character requirements (mesh, rig, animation) |
