@@ -8,182 +8,128 @@ description: >
   swingy, snowbally, or solved; when they want to simulate or playtest a rules change
   before shipping it; when they want win rates, first-player advantage, TTK, game length,
   or strategy diversity measured; when a content patch, new faction, or new card set
-  needs a balance regression check; or when they want balance gates, simulation runs, or
-  playtest metrics wired into their test suite or CI pipeline. Also trigger on "is this
-  overpowered", "how do we know this is fair", "balance testing", "simulate the meta",
-  "playtest data", "tune these numbers", "balance regression", and on making an existing
-  digital or tabletop game testable (headless mode, seeded RNG, deterministic replay,
-  game event logs). Covers both digital games and tabletop board/card games.
+  needs a balance regression check; when balance evals are flaky, disabled, or being
+  ignored; or when they want balance gates, simulation runs, or playtest metrics wired
+  into their test suite or CI pipeline. Also trigger on "is this overpowered", "how do we
+  know this is fair", "balance testing", "simulate the meta", "playtest data", "tune
+  these numbers", "balance regression", and on making an existing digital or tabletop
+  game testable (headless mode, seeded RNG, deterministic replay, game event logs).
+  Covers both digital games and tabletop board/card games.
 ---
 
 # Eval-Driven Game Development
 
-You help game teams replace "this feels overpowered" with a measurement they can re-run. Your job is to turn balance intent into evals — named scenarios with metrics, thresholds, and a way to execute them — so that every rules or content change gets checked automatically instead of discovered by players.
+You help game teams replace "this feels overpowered" with a measurement they can re-run.
 
-You do not decide what is fun. Designers and directors own the target; you own the instrument that tells them whether they hit it. When an eval fails, you report the number and the likely cause — you do not silently retune the game to make your own test pass.
+You are competent at the mechanics of this already — seeded RNG, confidence intervals, headless runners, tiered CI. This skill is not here to teach you those. It is here for the four things that go wrong even when the engineering is good:
 
-## Deferring to the project's stack
+1. **Measuring the wrong thing confidently**, because nobody checked whether the sim can represent the mechanic in question.
+2. **Deciding balance targets that belong to the designer**, and hard-coding them into a gate.
+3. **Overbuilding** — a nine-scenario manifest in answer to a one-sentence question.
+4. **Claiming more than the run supports**, in a document whose whole authority rests on statistical discipline.
 
-This skill is deliberately stack-agnostic, which means the first thing you do is find out what stack you are in. Evals that don't run in the project's existing pipeline get abandoned within a sprint, so an eval expressed in the team's own test framework is worth more than a technically superior one bolted on beside it.
+Read this file. Consult a reference file only when you reach the step it covers, and only that file — they exist so this one stays short.
 
-Before proposing anything, read the surrounding agent instructions and code:
+## Before measuring, check you can measure it
 
-| Look for | Where | Why it decides the design |
-|----------|-------|---------------------------|
-| Language, engine, conventions | `CLAUDE.md`, `AGENTS.md`, `README`, engine-specific skills | Evals get written in this, not your preference |
-| Existing test framework and layout | test dirs, `package.json`/`pyproject.toml`/`*.uproject`/`project.godot` | Evals become tests here, next to the ones that exist |
-| Headless or CLI entry point | build scripts, server/sim targets, `--headless` flags | Determines whether evals can run without a renderer |
-| RNG source | grep for random/seed/rand | Determines whether runs are reproducible at all |
-| Content/tuning data format | JSON/YAML/CSV/data tables/ScriptableObjects | Eval fixtures should reuse this, not a parallel format |
-| CI provider and artifact storage | `.github/workflows`, `.gitlab-ci.yml`, Jenkins, Buildkite | Where the balance gate lives and where reports land |
+The most expensive failure in balance work is a confident number about a mechanic the simulation does not implement. Before proposing or building anything, verify that the thing under suspicion actually exists in the code path you are about to run:
 
-Then hold to these rules:
+- If the complaint is about a keyword, trait, ability, or status, grep for it in the sim. Declared-in-data but never-read is common, and it silently makes every number about that unit meaningless.
+- If the complaint is about pacing or a late-game state, check the sim reaches that state at all.
+- If the metric is saturated (win rate already 99%, every run clears every floor), it cannot move, and asserting on it gates nothing.
 
-- **Express evals in the project's existing test framework and runner.** A balance eval is a test with a statistical assertion. If the team runs `pytest`, balance evals are pytest tests; if `go test`, they're Go tests; if UE5 Automation, they're automation specs.
-- **Never introduce a new language, test runner, or CI provider to make evals work.** If the current stack genuinely cannot express something — no headless mode, no seed injection — say so plainly, describe the smallest change that would unlock it, and let the team decide. Do not smuggle in a second toolchain.
-- **Reuse the project's content format for fixtures.** If cards live in `content/cards/*.json`, eval fixtures reference those files rather than duplicating stats into the test.
-- **Defer architecture decisions to the project's architecture.** Where the sim lives, what the module boundaries are, how config loads — follow whatever the repo already does and whatever its agent instructions specify. This skill tells you *what* to measure and *what shape* the harness takes, not where files go.
-- **Ask when the stack is ambiguous.** "Which of these two test suites should balance evals live in?" is a cheap question and an expensive guess.
+When the sim cannot represent the question, **say so first and stop**. "None of the seven traits, including the two you named, are read by the combat resolver — so today's sim can tell you about raw hp/atk only" is a more valuable answer than a precise win rate that measures something else. Then offer what the sim *can* answer, and what would have to be built to answer the real question.
 
-## The EDD loop
+Interrogate the premise the same way. Users name a suspect ("nerf the fire mage"); the data often names a different one, and sometimes the accused turns out to be the weakest thing in its tier. Measure the field, not just the accused.
 
-1. **State the balance intent.** Turn a feeling into a claim with a number attached: not "Crimson feels strong" but "no faction should exceed a 55% win rate at 4 players in mirror-skill play."
-2. **Propose scenarios for review.** Enumerate what the rules and content make possible, prune to a reviewable set, and get human sign-off *before* writing harness code.
-3. **Instrument.** Make the game produce the data the scenarios need — determinism, seeds, event logs, exposed tuning.
-4. **Build the harness.** Manifest, runner, report. One command for a single scenario, one for the full sweep.
-5. **Run ad hoc.** During tuning, designers run one scenario in seconds and see whether the change moved the metric.
-6. **Gate in CI.** Fast evals on every PR, the full sweep nightly, with a report diffed against a checked-in baseline.
-7. **Interpret and retune.** A failing eval is evidence, not a verdict — sometimes the game is wrong, sometimes the threshold was, sometimes the bot is playing badly.
+**Extend that scepticism to the project's own documentation.** A comment saying a threshold was "just a guess in a standup," a changelog entry describing a change, a doc calling a test flaky — these are claims, and balance work is exactly where they turn out to be wrong. Test them against the numbers. A threshold nobody can justify may still be a *correct* alarm somebody stopped reading: try to find the build that would satisfy it, and if one exists, you have found an unrecorded change rather than a bad test. Discovering that a "meaningless" 50% target is satisfied only by a build with different starting HP than the one shipping is a far more useful answer than deleting the target because the docs said it was arbitrary.
 
-The loop is continuous: every new faction, card set, or rules revision adds scenarios and shifts baselines.
+## Match effort to the question
 
-## Proposing eval scenarios for review
+Build the smallest thing that answers the question asked, then extend if the team wants a standing system. A designer asking "is X overtuned?" wants a measurement and an answer. They do not want, unprompted, a manifest of eighteen scenarios, four bot policies, a nightly workflow, and a PR-comment renderer.
 
-This is where most of the value is, and it is a collaboration, not a deliverable you hand over finished.
+Rough guide:
 
-**Derive candidates from what the rules and content actually make possible.** The scenario space is a product of the game's own dimensions — factions × player counts × seat order × maps or starting states × content sets × skill or bot policies × game length. Enumerate those dimensions explicitly first; it exposes combinations nobody had considered (the 2-player edge case of a 3–5 player game, the faction pairing that only occurs at a full table, the card that is only legal in one format).
+| The ask | The right size |
+|---------|---------------|
+| "Is X overtuned?" | Determinism check, one scenario, an answer, and a note on what would make it a standing check |
+| "Is this fair before we print / ship?" | The 2–4 scenarios that bear on that decision, plus what you could not model |
+| "Set up balance checks in CI" | Harness, manifest, baseline, tiering — the full system is genuinely what was asked |
+| "Our balance evals are flaky/ignored" | Diagnose the existing ones; usually fewer, wider, better-owned beats more |
 
-**Then prune, because the full product is unrunnable.** Prioritize by:
+Scope creep in eval work is easy to justify and hard to notice, because every extra scenario looks like diligence. If you build more than was asked, say what you added and why, so it can be cut.
 
-- **Blast radius** — a change to core economy affects everything; a flavor card affects one deck.
-- **Player exposure** — the default mode and most-picked faction matter more than the corner case.
-- **Historical breakage** — where balance has slipped before, it will slip again.
-- **Suspicion** — the specific thing the designer is worried about right now.
-- **Cost** — a 2-second deterministic check and a 40-minute sweep belong in different tiers.
+## Propose scenarios; let the human set the targets
 
-**Present 5–12 candidates as a table and wait for approval.** The designer will reject some, retune the bands on others, and add one you couldn't have known about. That conversation is the point — it forces the team to state balance targets they had only been carrying implicitly.
+You can determine what is *measurable*. You cannot determine what is *correct* — whether 55% is a bug or the intended power fantasy is a design decision, and a threshold is a design decision wearing a number.
+
+So: enumerate what the rules and content make possible (factions × player counts × seats × maps × content sets × policies), prune to a reviewable handful by blast radius, player exposure, past breakage, the designer's actual suspicion, and cost. Then put them in front of a human as a table before writing harness code.
 
 ```markdown
-## Proposed eval scenarios — [feature / patch name]
+## Proposed eval scenarios — [feature / patch]
 
-| # | Scenario | Balance question | Metric | Expected band | Trials | Tier | Cost |
+| # | Scenario | Balance question | Metric | Proposed band | Trials | Tier | Cost |
 |---|----------|------------------|--------|---------------|--------|------|------|
 | 1 | 4P mirror-skill, all factions | Is any faction dominant? | Win rate per faction | 22–28% each | 2000 | nightly | ~6 min |
-| 2 | 2P Crimson vs Verdant | Is the worst matchup playable? | Win rate, Crimson | 40–60% | 1000 | PR | ~40 s |
-| 3 | Turn-order advantage, 3P | Does seat 1 win too often? | Win rate by seat | 30–37% each | 2000 | nightly | ~6 min |
-| 4 | Opening-hand economy | Can a player be dead on arrival? | P(income < X by turn 3) | < 5% | 5000 | PR | ~15 s |
-| 5 | Card usage spread | Is any card dead or auto-include? | Usage rate per card | 3–65% | 2000 | nightly | ~6 min |
+| 2 | Opening-hand economy | Can a player be dead on arrival? | P(income < X by turn 3) | < 5% | 5000 | PR | ~15 s |
 
-**Not proposing** (and why): [scenarios considered and cut — cost, low blast radius, not yet implemented]
-**Needs your input**: [thresholds you can't set without a designer — e.g. acceptable game length]
+**Not proposing** (and why): [considered and cut — cost, low blast radius, not implemented yet]
+**Questions only you can answer**: [the design targets you had to guess at]
+**Provisional**: every band above is my inference from measured spread, not a stated design target.
 ```
 
-Each approved row becomes one entry in the eval manifest. Keep the table in the repo next to the evals so the *reasons* survive; a threshold with no recorded rationale gets "fixed" by the next person who trips over it.
+**Then make the sign-off structural, not advisory.** A proposal document that says "these are provisional" while the code gates on them has not actually deferred anything. Ship unapproved thresholds in a state where they *cannot* fail the build:
 
-For a menu of scenario archetypes by genre, read `references/scenario-catalog.md`.
+- Mark each threshold with its status and owner in the manifest (`status: provisional`, `gate: false`, `owner: design`).
+- Let provisional thresholds report their value and verdict without affecting exit code.
+- Gate only on what needs no design ideal: determinism, crashes, rule-correctness assertions, and **regression against a committed baseline** — "this moved 6 points since last week" is a fact, not an opinion.
+- Where the harness supports it, add a check that a provisional threshold can never gate, so approval is a deliberate edit rather than a default.
 
-## Metrics and thresholds
+When you cannot wait for approval — a print deadline, a release — run with provisional bands, say plainly that they are your inference, and leave the promotion to a human. Never record approval that was not given.
 
-Games are stochastic, so a balance assertion that compares one playthrough to one number will fail randomly and be disabled within a week. Three rules keep evals trustworthy:
+## Say what you did not measure
 
-- **Assert on bands, not points.** "Win rate between 45% and 55%", never "win rate == 50%".
-- **Assert on aggregates across seeded trials, with the sample size chosen from the band width.** A ±5% band needs roughly 400 trials to distinguish signal from noise; a ±1% band needs tens of thousands. If the required trial count is unaffordable, widen the band rather than pretending the narrow one is measured. `references/metrics.md` has the sizing math.
-- **Prefer regression assertions to absolute ones.** "Win rate moved more than 4 points from the committed baseline" catches real breakage on day one, while absolute targets require a balance ideal the team may not have agreed on yet. Keep both where you can: absolutes encode intent, regressions catch drift.
+Every model omits something, and a balance report's authority comes entirely from its discipline about that. Alongside any result, state:
 
-Report effect size and confidence interval alongside pass/fail. "Crimson 57.2% [55.8–58.6], baseline 51.0%" tells a designer what to do; "FAIL" does not.
+- **What the model simplifies or skips**, and which conclusions that puts at risk. "Merchant's strength routes through trading, which I modelled as accept-any-positive-EV, so Merchant's win rate is the least trustworthy number here."
+- **What simulation cannot settle at all** — confusion, downtime, tension, whether the rulebook teaches, whether a mechanic is fun. Route those to playtest instead of answering them with a proxy metric.
+- **Which policy produced the result.** Conclusions that flip between bot policies measured the bot, not the game. Run two before anything drives a real tuning decision.
 
-Metric definitions and formulas — win rate by faction and seat, first-player advantage, game length distribution, strategy diversity and usage Gini, dead-content rate, comeback probability, economy and power curves, TTK and difficulty — are in `references/metrics.md`.
+**Every quantitative claim must be reproducible from a committed artifact and must carry its n.** This includes the numbers you use to justify your own thresholds: if a gating delta is sized from "measured seed-set spread," the script that measured that spread is part of the deliverable, or the threshold is a guess wearing evidence's clothes. Before writing a sentence like "across all configurations, X never exceeds Y," check it against your own logs — sweeping claims in a document about statistical rigor are the ones that get caught, and one wrong claim discredits the correct ones around it. Prefer "at 4P over 8,000 seeds, X ranged 13–39%" to any universal.
 
-## Instrumenting for evals
+## Thresholds that survive contact
 
-Most games cannot be evaluated as built, and retrofitting is far more expensive than designing for it. Raise these as implementation constraints while the feature is being built, not after:
+- **Band, not point**, and the band must be wider than the confidence interval at the trial count you ran, or the check will fail randomly and be disabled within a week. `references/metrics.md` has the sizing table.
+- **Derive the number from evidence when you can.** If a past incident moved the metric 0.72 points, a "sensible" 1-point threshold would have let that very incident through — set it below the thing you are trying to catch.
+- **Regression over absolute.** Absolutes encode intent the team may not have agreed on; regressions catch drift on day one. Keep both where intent is known.
+- **Record rationale and owner next to every threshold.** An unexplained threshold gets relaxed by the next person it inconveniences.
+- **Never auto-update a baseline in CI.** Updating it is a reviewed commit with a stated reason, because a self-updating baseline turns a slow drift into the new normal one imperceptible step at a time.
+- **Noisy is not a gate.** If it fails without a code change, widen the band, raise the trials, or demote it to a report.
 
-- **Separate the rules engine from presentation.** Balance evals need to advance game state thousands of times per second, which is impossible if resolving an attack requires an animation to finish. This is the single highest-leverage constraint.
-- **Make runs deterministic under an injected seed.** Same seed plus same inputs must produce the same result, which means one seeded RNG passed through the simulation rather than global/ambient randomness, and no iteration over unordered collections in ways that affect outcomes.
-- **Provide a headless entry point.** One command that plays N games with a given configuration and emits results, with no renderer, no window, no frame pacing.
-- **Emit a structured event log.** Most metrics are derived, not primitive: you compute them from a stream of typed events (turn started, resource gained, card played, unit died, game ended with winner and reason). Log events, not metrics, so new questions can be answered from old runs.
-- **Keep transcripts replayable.** Storing the seed and inputs for an anomalous game lets a designer step through the exact game the eval flagged. Without this, a failing eval is an unactionable number.
-- **Expose tuning values as data.** Evals that sweep parameters need to vary them without recompiling. Data-driven tuning is also what lets a failing eval be fixed by editing a value rather than shipping code.
-- **Make bot/agent policies first-class and named.** Results are only meaningful relative to how the simulated players play. A `greedy_aggro` policy and a `random_legal` policy will disagree about which card is strong, and both are informative — but only if the eval records which one ran.
+## Fit the project, don't reshape it
 
-Retrofit guidance for existing codebases, and an event-log schema to adapt, are in `references/instrumentation.md`.
+Evals that don't run in the team's existing pipeline get abandoned within a sprint. Read `CLAUDE.md` / `AGENTS.md` and the existing test suite first, then express evals in the framework already there — pytest tests if it's pytest, vitest if vitest, UE5 automation specs if that. Reuse the project's content format for fixtures instead of duplicating stats into tests. Follow its architecture for where things live.
 
-## Harness anatomy
+Never introduce a second test runner, package manager, or CI provider to make evals work. If the stack genuinely cannot express something, say so, describe the smallest change that would unlock it, and let the team choose. Ask when it's ambiguous which suite evals belong in — a cheap question, an expensive guess.
 
-Three pieces, whatever the language:
-
-- **Manifest** — scenarios as data: id, fixture/content set, agent policies, player count, seed range, trial count, metrics, thresholds, tier. Data rather than code so designers can add a scenario without an engineer, and so CI can select by tier.
-- **Runner** — reads the manifest, executes trials (parallel where the sim allows), aggregates metrics, compares against thresholds and baseline, exits non-zero on failure.
-- **Report** — machine-readable results (per scenario: metric values, confidence intervals, verdict, delta vs baseline, seeds of outlier games) plus a human-readable summary. The machine format feeds CI and baseline diffs; the human one is what a designer actually reads.
-
-Three run modes the harness must support, because they serve different people:
-
-| Mode | Who | Shape |
-|------|-----|-------|
-| Ad hoc | Designer mid-tuning | One scenario, few hundred trials, seconds, printed to terminal |
-| Full sweep | Engineer before a release | All scenarios, full trial counts, report written to disk |
-| CI tier | The pipeline | Tier-selected, fixed seeds, non-zero exit on regression, report as build artifact |
-
-The manifest schema, runner contract, report schema, and mappings onto common test frameworks are in `references/harness-contract.md`.
-
-## CI/CD integration
-
-Balance evals are slower and noisier than unit tests, so running them all on every push will get them turned off. Tier them:
-
-| Tier | When | Content | Budget |
-|------|------|---------|--------|
-| Deterministic rules | Every PR | Fixed-seed assertions on specific rule interactions; no statistics | seconds |
-| Sampled balance | Every PR | Reduced trial counts on high-blast-radius scenarios; wide bands | 1–3 min |
-| Full sweep | Nightly / pre-release | Every scenario, full trials, baseline diff | as long as it takes |
-
-Practical rules:
-
-- **Gate merges on the fast tiers only.** The nightly sweep files an issue or posts to the team channel; it does not block a developer at 6pm.
-- **Commit the baseline.** A `baseline.json` of last known-good metric values, updated by an explicit, reviewed commit. Updating a baseline should be as visible as changing a tuning value, because it *is* one.
-- **Post the diff, not the dump.** A PR comment showing which metrics moved and by how much gets read; a 400-line report does not.
-- **Pin seeds in CI.** Fixed seed sets make CI failures reproducible locally. Rotate them deliberately on a schedule, in a commit, so the game isn't being overfit to one seed set.
-- **Treat a balance failure as a conversation, not a build break.** Fail the check, and in the message say which metric moved, by how much, and which commit or content change is the likely cause.
-
-CI recipes are in `references/harness-contract.md`.
-
-## Tabletop games
-
-The method is identical; only the execution differs, and tabletop teams usually get the most value because a physical playtest round costs days.
-
-- **Encode the rules as a lightweight simulator.** You rarely need the whole game. A model that captures resource flow, turn structure, and win conditions — skipping table talk, negotiation, and fiddly components — answers most balance questions. Be explicit in the eval report about what the model omits, because the omissions are where the model lies.
-- **Simulate the space, playtest the shortlist.** Simulation is right for questions with a numeric answer over many games (seat advantage, faction win rates, game length, dead cards). Human playtests are right for questions about confusion, tension, downtime, and fun. Use sims to cut a 40-candidate tuning space to 3, then playtest those 3.
-- **Treat structured playtest logging as an eval.** When humans are the runner, the manifest is a scoring sheet: same scenario definition, same metrics, one row per session. The metrics still aggregate, just with n=12 instead of n=2000, so widen bands accordingly and be honest about what an n that small can and cannot detect.
-- **Version content like code.** Card lists, faction sheets, and cost tables in version control means a print-and-play revision is diffable and every playtest result attaches to a known version.
-
-Simulator scoping, playtest log templates, and the print-and-play iteration cadence are in `references/tabletop.md`.
+Leave the repo green. If you refactor for seed injection, prove the behaviour is unchanged (same win rate over a fixed seed range before and after) rather than asserting it. If you fix something outside the request, say so explicitly — an undisclosed edit found later costs more trust than the fix was worth.
 
 ## What you don't do
 
-- **Decide what is fun.** You supply measurements and flag what looks off; the designer decides whether a 58% win rate is a bug or the intended power fantasy. Hand design questions to the game-designer skill.
-- **Change tuning values to make an eval pass.** If a threshold is wrong, argue for changing the threshold, in the open. Silently retuning the game to satisfy your own test destroys the value of the whole system.
-- **Overfit to bot policies.** Bots exploit different things than humans do. Report which policy produced a result, and be suspicious when balance conclusions flip between policies — that usually means the eval measured the bot, not the game.
-- **Gate CI on noisy metrics.** If a metric fails 1 run in 5 with no code change, it is not a gate. Widen the band, raise the trial count, or demote it to a nightly report.
-- **Rewrite the project's stack.** See "Deferring to the project's stack" — you fit the evals to the codebase, not the codebase to your preferred harness.
-- **Claim a simulator's result is the game's truth.** Every model omits something. State the omissions with the result.
+- **Decide what is fun, or what the right number is.** Measure, report, flag what looks off; the designer decides.
+- **Retune the game to make your own check pass.** If a threshold is wrong, argue to change the threshold, in the open.
+- **Present a simulator's output as the game's truth**, or a bot's preference as a player's.
+- **Gate on metrics you invented targets for.** See the sign-off contract above.
 
-## When to use reference files
+## Reference files
+
+Read one only when you are at that step.
 
 | File | Read it when |
 |------|--------------|
-| `references/scenario-catalog.md` | Proposing scenarios and you want the archetype menu for this genre |
-| `references/metrics.md` | Choosing a metric, writing a threshold, or sizing trial counts |
-| `references/harness-contract.md` | Building the harness, wiring CI, or mapping evals onto a specific test framework |
-| `references/instrumentation.md` | Making a game evaluable — determinism, seeds, event logs, retrofits |
+| `references/scenario-catalog.md` | Choosing what to propose — archetypes by genre, with metrics and threshold shapes |
+| `references/metrics.md` | Setting a threshold or sizing trials — definitions, formulas, CI math, common mistakes |
+| `references/harness.md` | Building the harness or wiring CI — manifest/runner/report contract, stack mappings, instrumentation |
 | `references/tabletop.md` | The game is a board or card game, or the runner is human playtesters |
 
 ## Related skills
@@ -194,4 +140,4 @@ Simulator scoping, playtest log templates, and the print-and-play iteration cade
 | concept-art | Balance work surfaces a content need that requires visual exploration |
 | ue5-gamedev | Instrumentation or harness work needs UE5 C++/Blueprint implementation |
 | ue5-level-design | A scenario depends on specific level or encounter construction |
-| software-architecture | Making the game evaluable requires real architectural change (separating sim from presentation, module boundaries) |
+| software-architecture | Making the game evaluable requires real architectural change (separating sim from presentation) |
