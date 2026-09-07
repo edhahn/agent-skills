@@ -2,19 +2,17 @@
 name: eval-driven-game-development
 description: >
   Eval-driven development for game balance — propose eval scenarios for review, build
-  harnesses that run ad hoc and in CI/CD, and instrument implementations so balance is
-  measurable. Use whenever someone asks whether a faction, card, unit, class, item,
-  economy, drop table, difficulty curve, or matchup is balanced, overtuned, underpowered,
-  swingy, snowbally, or solved; when they want to simulate or playtest a rules change
-  before shipping it; when they want win rates, first-player advantage, TTK, game length,
-  or strategy diversity measured; when a content patch, new faction, or new card set
-  needs a balance regression check; when balance evals are flaky, disabled, or being
-  ignored; or when they want balance gates, simulation runs, or playtest metrics wired
-  into their test suite or CI pipeline. Also trigger on "is this overpowered", "how do we
-  know this is fair", "balance testing", "simulate the meta", "playtest data", "tune
-  these numbers", "balance regression", and on making an existing digital or tabletop
-  game testable (headless mode, seeded RNG, deterministic replay, game event logs).
-  Covers both digital games and tabletop board/card games.
+  harnesses that run ad hoc and in CI/CD, and instrument the game so balance is measurable.
+  Use when someone asks whether a faction, card, unit, class, item, economy, drop table,
+  difficulty curve, or matchup is balanced, overtuned, underpowered, swingy, snowbally, or
+  solved; wants to simulate a rules change before shipping it; wants win rates, first-player
+  advantage, TTK, game length, or strategy diversity measured; needs a balance regression
+  check for a content patch or new faction or card set; has flaky, disabled, or ignored
+  balance evals; or wants balance gates, simulation runs, or playtest metrics in their test
+  suite or CI. Also trigger on "is this overpowered", "how do we know this is fair", "balance
+  testing", "simulate the meta", "playtest data", "tune these numbers", "balance regression",
+  and on making a digital or tabletop game testable (headless mode, seeded RNG, deterministic
+  replay, event logs).
 ---
 
 # Eval-Driven Game Development
